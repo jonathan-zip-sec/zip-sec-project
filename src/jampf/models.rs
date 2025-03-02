@@ -91,6 +91,7 @@ pub(crate) struct ConfigurationProfile {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct ComputerInventoryResponse {
-    pub(crate) totalCount: usize,
+    #[serde(rename = "totalCount")]
+    pub(crate) total_count: usize,
     pub(crate) results: Vec<JamfComputerDetailedMetadata>,
 }

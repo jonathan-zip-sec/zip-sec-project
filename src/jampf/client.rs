@@ -2,11 +2,11 @@ use enum_dispatch::enum_dispatch;
 use reqwest::Client;
 use thiserror::Error;
 use tokio::sync::OnceCell;
-use tracing::{error, info};
+use tracing::error;
 
 use crate::jampf::models::ComputerInventoryResponse;
 
-use super::models::{JamfAuthReponse, JamfComputerDetailedResponse, JamfGetComputersResponse};
+use super::models::JamfAuthReponse;
 static JAMF_CLIENT: OnceCell<Client> = OnceCell::const_new();
 
 static PAGE_SIZE: usize = 100;
@@ -31,11 +31,6 @@ impl ToString for ComputerInventorySection {
 #[enum_dispatch]
 #[mockall::automock]
 pub(crate) trait JamfClientTrait {
-    async fn get_computers(&self) -> Result<JamfGetComputersResponse, JamfClientError>;
-    async fn get_computer_details(
-        &self,
-        id: usize,
-    ) -> Result<JamfComputerDetailedResponse, JamfClientError>;
     async fn get_computer_inventory(
         &self,
         section: Vec<ComputerInventorySection>,
@@ -56,8 +51,8 @@ pub(crate) struct JamfClientImpl {
 
 #[derive(Error, Debug)]
 pub enum JamfClientError {
-    #[error("Failed to reach Jampf")]
-    ConnectionError(#[from] reqwest::Error),
+    #[error("Failed to reach Jampf with error {0}")]
+    ReqwestError(#[from] reqwest::Error),
 }
 
 async fn get_client() -> Client {
@@ -73,8 +68,8 @@ impl JamfClientImpl {
         password: String,
         jamf_url: String,
     ) -> Result<Self, JamfClientError> {
-        let client = get_client().await;
-        let response = client
+        let response = get_client()
+            .await
             .post(format!("{}/api/v1/auth/token", jamf_url))
             .basic_auth(username, Some(password))
             .send()
@@ -91,16 +86,16 @@ impl JamfClientImpl {
         section: &Vec<ComputerInventorySection>,
         page: usize,
     ) -> Result<ComputerInventoryResponse, JamfClientError> {
-        info!("Getting inventory page");
+        // Select for the sections being requested
         let mut params = section
             .iter()
             .map(|s| ("section".to_string(), s.to_string()))
             .collect::<Vec<(String, String)>>();
         params.push(("page".to_string(), page.to_string()));
         params.push(("page-size".to_string(), PAGE_SIZE.to_string()));
-        let client = get_client().await;
 
-        let response = client
+        let response = get_client()
+            .await
             .get(format!("{}/api/v1/computers-inventory", self.jamf_url))
             .header("accept", "application/json")
             .bearer_auth(self.bearer_token.clone())
@@ -116,52 +111,17 @@ impl JamfClientImpl {
 }
 
 impl JamfClientTrait for JamfClientImpl {
-    async fn get_computers(&self) -> Result<JamfGetComputersResponse, JamfClientError> {
-        let client = get_client().await;
-
-        let response = client
-            .get(format!(
-                "{}/JSSResource/computers/subset/basic",
-                self.jamf_url
-            ))
-            .header("accept", "application/json")
-            .bearer_auth(self.bearer_token.clone())
-            .send()
-            .await?;
-        Ok(response.json::<JamfGetComputersResponse>().await?)
-    }
-
-    async fn get_computer_details(
-        &self,
-        id: usize,
-    ) -> Result<JamfComputerDetailedResponse, JamfClientError> {
-        let client = get_client().await;
-
-        let response = client
-            .get(format!(
-                "{}/JSSResource/computers/id/{}",
-                self.jamf_url,
-                id.to_string()
-            ))
-            .header("accept", "application/json")
-            .bearer_auth(self.bearer_token.clone())
-            .send()
-            .await?;
-        Ok(response.json::<JamfComputerDetailedResponse>().await?)
-    }
-
     async fn get_computer_inventory(
         &self,
         section: Vec<ComputerInventorySection>,
     ) -> Result<ComputerInventoryResponse, JamfClientError> {
-        info!("Getting computer inventory");
         let mut inventory_response = self.get_computer_inventory_page(&section, 0).await?;
-        if inventory_response.totalCount <= PAGE_SIZE {
+        if inventory_response.total_count <= PAGE_SIZE {
             return Ok(inventory_response);
         }
 
         let num_pages =
-            (inventory_response.totalCount + PAGE_SIZE as usize - 1) / PAGE_SIZE as usize;
+            (inventory_response.total_count + PAGE_SIZE as usize - 1) / PAGE_SIZE as usize;
         for page in 1..num_pages {
             let pagination_response = self.get_computer_inventory_page(&section, page).await?;
             inventory_response
@@ -195,13 +155,6 @@ mod tests {
     #[tokio::test]
     async fn get_get_computers_success() {
         let provider = init().await;
-        let computers = provider.get_computers().await.unwrap();
-
-        assert_eq!(computers.computers.len(), 4);
-        println!("{:?}", computers.computers[0]);
-
-        let detailed_metadata = provider.get_computer_details(12).await.unwrap();
-        println!("{:?}", detailed_metadata);
 
         let inventory = provider
             .get_computer_inventory(vec![
@@ -210,6 +163,9 @@ mod tests {
             ])
             .await
             .unwrap();
-        println!("{:?}", inventory);
+        assert_eq!(inventory.total_count, 4);
+        assert_eq!(inventory.results.len(), 4);
     }
+
+    // TODO: If I had more time I would use http-relay to mock jamf server responses: https://crates.io/crates/http-relay
 }

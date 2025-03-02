@@ -2,20 +2,19 @@ use std::env;
 
 use axum::response::Json;
 use http::StatusCode;
-use serde::{Deserialize, Serialize};
 
-use tracing::{info, instrument, span, Level};
+use tracing::{info, instrument};
 
 use crate::jampf::{
-    client::{ComputerInventorySection, JamfClient, JamfClientImpl, JamfClientTrait},
-    models::ComputerInventoryResponse,
-    provider::ComputersOutput,
+    client::{JamfClient, JamfClientImpl},
+    provider::{ComputerProvider, ComputersOutput},
 };
 use dotenv::dotenv;
 
 #[instrument]
 pub async fn computers() -> Result<Json<ComputersOutput>, StatusCode> {
     dotenv().ok();
+    // For now, just get everything from env variables - in the future can use postgres
     let username = env::var("USERNAME").expect("Please set username env var");
     let password = env::var("PASSWORD").expect("Please set password env var");
     let jamf_url = env::var("JAMF_URL").expect("Please set jamf_url env var");
@@ -26,16 +25,12 @@ pub async fn computers() -> Result<Json<ComputersOutput>, StatusCode> {
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
     );
-    info!("About to call inventory!");
-    let inventory = jamf_client
-        .get_computer_inventory(vec![
-            ComputerInventorySection::OperatingSystem,
-            ComputerInventorySection::General,
-            ComputerInventorySection::Hardware,
-        ])
+    let computer_provider = ComputerProvider { jamf_client };
+
+    let inventory = computer_provider
+        .fetch_computers()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    info!("Called inventory");
     let computers_output = ComputersOutput::from(inventory);
     Ok(Json(computers_output))
 }

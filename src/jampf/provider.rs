@@ -5,7 +5,7 @@ use super::{
 use crate::jampf::client::ComputerInventorySection;
 use crate::jampf::client::JamfClientTrait;
 use serde::{Deserialize, Serialize};
-use tracing::{error};
+use tracing::error;
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct ComputersOutput {
@@ -51,11 +51,11 @@ pub struct Computer {
 }
 
 pub struct ComputerProvider {
-    jamf_client: JamfClient,
+    pub(crate) jamf_client: JamfClient,
 }
 
 impl ComputerProvider {
-    async fn fetch_computers(&self) -> Result<ComputersOutput, JamfClientError> {
+    pub async fn fetch_computers(&self) -> Result<ComputersOutput, JamfClientError> {
         let inventory = self
             .jamf_client
             .get_computer_inventory(vec![
@@ -95,7 +95,7 @@ mod test {
                     ]
                 );
                 Ok(ComputerInventoryResponse {
-                    totalCount: 0,
+                    total_count: 0,
                     results: vec![],
                 })
             });
@@ -130,10 +130,15 @@ mod test {
             .fetch_computers()
             .await
             .expect("Should succeed");
-        assert_eq!(computers, ComputersOutput { computers: vec![test_computer_output()] });
+        assert_eq!(
+            computers,
+            ComputersOutput {
+                computers: vec![test_computer_output()]
+            }
+        );
     }
 
-    // TODO: If I had more time, I'd write tests for more cases :) 
+    // TODO: If I had more time, I'd write tests for more cases :)
 
     fn test_computer_output() -> Computer {
         Computer {
@@ -147,14 +152,16 @@ mod test {
 
     fn test_inventory_response() -> ComputerInventoryResponse {
         ComputerInventoryResponse {
-            totalCount: 1,
+            total_count: 1,
             results: vec![JamfComputerDetailedMetadata {
                 hardware: None,
                 security: None,
                 software: None,
                 configuration_profiles: None,
                 operating_system: None,
-                general: Some(GeneralMetadata { name: "test_name".to_string() }),
+                general: Some(GeneralMetadata {
+                    name: "test_name".to_string(),
+                }),
                 id: Some("test_id".to_string()),
                 udid: Some("udid_test".to_string()),
             }],
