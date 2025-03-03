@@ -14,6 +14,7 @@ pub struct CredentialsOutput {
 }
 
 pub async fn credentials(Json(credentials): Json<CredentialsInput>) -> Json<CredentialsOutput> {
+    // NOTE: For the real app, this would probably authenticate with Jamf and return a bearer token that could be included in subsequent requests
     Json(CredentialsOutput {
         username: credentials.username,
         password: credentials.password,

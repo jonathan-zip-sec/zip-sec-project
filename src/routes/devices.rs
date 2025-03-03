@@ -3,17 +3,18 @@ use std::env;
 use axum::response::Json;
 use http::StatusCode;
 
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 use crate::jampf::{
     client::{JamfClient, JamfClientImpl},
-    provider::{ComputerProvider, ComputersOutput},
+    provider::{ComputerProvider, DevicesOutput},
 };
 use dotenv::dotenv;
 
 #[instrument]
-pub async fn computers() -> Result<Json<ComputersOutput>, StatusCode> {
+pub async fn devices() -> Result<Json<DevicesOutput>, StatusCode> {
     dotenv().ok();
+    // NOTE: In a real app the request would probably come with a bearer token
     // For now, just get everything from env variables - in the future can use postgres
     let username = env::var("USERNAME").expect("Please set username env var");
     let password = env::var("PASSWORD").expect("Please set password env var");
@@ -26,11 +27,12 @@ pub async fn computers() -> Result<Json<ComputersOutput>, StatusCode> {
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
     );
     let computer_provider = ComputerProvider { jamf_client };
+    // NOTE: If we had mobile devices in the Jamf account, I would create a MobileDeviceProvider as well
 
-    let inventory = computer_provider
-        .fetch_computers()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let computers_output = ComputersOutput::from(inventory);
+    let inventory = computer_provider.fetch_computers().await.map_err(|e| {
+        error!("Something went wrong fetching computer inventory: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let computers_output = DevicesOutput::from(inventory);
     Ok(Json(computers_output))
 }

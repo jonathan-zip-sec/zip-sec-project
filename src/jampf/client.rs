@@ -4,9 +4,11 @@ use thiserror::Error;
 use tokio::sync::OnceCell;
 use tracing::error;
 
-use crate::jampf::models::{AvailableUpdates, ComputerInventoryResponse};
+use crate::jampf::models::JamfComputerInventoryResponse;
 
-use super::models::JamfAuthReponse;
+use super::models::{JamfAuthReponse, JamfAvailableUpdates};
+
+// We should only create a single reqwest::Client and keep it as a singleton to avoid having many open connections
 static JAMF_CLIENT: OnceCell<Client> = OnceCell::const_new();
 
 static PAGE_SIZE: usize = 100;
@@ -34,9 +36,11 @@ pub(crate) trait JamfClientTrait {
     async fn get_computer_inventory(
         &self,
         section: Vec<ComputerInventorySection>,
-    ) -> Result<ComputerInventoryResponse, JamfClientError>;
+    ) -> Result<JamfComputerInventoryResponse, JamfClientError>;
 
-    async fn get_os_managed_updates(&self) -> Result<AvailableUpdates, JamfClientError>;
+    async fn get_os_managed_updates(&self) -> Result<JamfAvailableUpdates, JamfClientError>;
+
+    // TODO: There aren't any mobile devices on the test jamf instance, but if there were I would add a method for fetching them
 }
 
 #[enum_dispatch(JamfClientTrait)]
@@ -57,6 +61,7 @@ pub enum JamfClientError {
     ReqwestError(#[from] reqwest::Error),
 }
 
+// We should only create a single reqwest::Client and keep it as a singleton to avoid having many open connections
 async fn get_client() -> Client {
     JAMF_CLIENT
         .get_or_init(|| async { Client::new() })
@@ -70,6 +75,10 @@ impl JamfClientImpl {
         password: String,
         jamf_url: String,
     ) -> Result<Self, JamfClientError> {
+        // NOTE: In a real app the request would probably come with a bearer token
+        // just for the sake of this example, we authenticate when creating the client
+        // we never have to refresh the token because the JamfClientImpl only lives
+        // for a single request
         let response = get_client()
             .await
             .post(format!("{}/api/v1/auth/token", jamf_url))
@@ -83,11 +92,13 @@ impl JamfClientImpl {
         })
     }
 
+    // Helper function to handle pagination
+    // Gets a single page of the the computer inventory
     async fn get_computer_inventory_page(
         &self,
         section: &Vec<ComputerInventorySection>,
         page: usize,
-    ) -> Result<ComputerInventoryResponse, JamfClientError> {
+    ) -> Result<JamfComputerInventoryResponse, JamfClientError> {
         // Select for the sections being requested
         let mut params = section
             .iter()
@@ -106,17 +117,18 @@ impl JamfClientImpl {
             .await
             .inspect_err(|e| error!("Failed to get computers inventory: {}", e))?;
         Ok(response
-            .json::<ComputerInventoryResponse>()
+            .json::<JamfComputerInventoryResponse>()
             .await
             .inspect_err(|e| error!("Failed to create ComputerInventoryResponse: {}", e))?)
     }
 }
 
 impl JamfClientTrait for JamfClientImpl {
+    /// Fetch all computers from computer inventory - include data from sections provided
     async fn get_computer_inventory(
         &self,
         section: Vec<ComputerInventorySection>,
-    ) -> Result<ComputerInventoryResponse, JamfClientError> {
+    ) -> Result<JamfComputerInventoryResponse, JamfClientError> {
         let mut inventory_response = self.get_computer_inventory_page(&section, 0).await?;
         if inventory_response.total_count <= PAGE_SIZE {
             return Ok(inventory_response);
@@ -133,7 +145,8 @@ impl JamfClientTrait for JamfClientImpl {
         Ok(inventory_response)
     }
 
-    async fn get_os_managed_updates(&self) -> Result<AvailableUpdates, JamfClientError> {
+    /// Get all OS managed updates from Jamf server to determine if devices are up to date
+    async fn get_os_managed_updates(&self) -> Result<JamfAvailableUpdates, JamfClientError> {
         let response = get_client()
             .await
             .get(format!(
@@ -145,10 +158,9 @@ impl JamfClientTrait for JamfClientImpl {
             .send()
             .await
             .inspect_err(|e| error!("Failed to current Mac OS versions: {}", e))?;
-        // println!("{}", response.text().await.unwrap());
-        // todo!()
+
         Ok(response
-            .json::<AvailableUpdates>()
+            .json::<JamfAvailableUpdates>()
             .await
             .inspect_err(|e| error!("Failed to get available updates: {}", e))?)
     }
