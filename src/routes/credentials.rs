@@ -5,12 +5,14 @@ use serde::{Deserialize, Serialize};
 pub struct CredentialsInput {
     pub username: String,
     pub password: String,
+    pub url: String
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct CredentialsOutput {
     pub username: String,
     pub password: String,
+    pub url: String
 }
 
 pub async fn credentials(Json(credentials): Json<CredentialsInput>) -> Json<CredentialsOutput> {
@@ -18,5 +20,6 @@ pub async fn credentials(Json(credentials): Json<CredentialsInput>) -> Json<Cred
     Json(CredentialsOutput {
         username: credentials.username,
         password: credentials.password,
+        url: credentials.url
     })
 }

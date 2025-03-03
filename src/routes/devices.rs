@@ -19,12 +19,15 @@ pub async fn devices() -> Result<Json<DevicesOutput>, StatusCode> {
     let username = env::var("USERNAME").expect("Please set username env var");
     let password = env::var("PASSWORD").expect("Please set password env var");
     let jamf_url = env::var("JAMF_URL").expect("Please set jamf_url env var");
-    info!("About to create client!");
+    info!("Creating Jamf Client for request!");
 
     let jamf_client = JamfClient::Impl(
         JamfClientImpl::new(username, password, jamf_url)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+            .map_err(|e| {
+                error!("Failed to create Jamf Client for request: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?,
     );
     let computer_provider = ComputerProvider { jamf_client };
     // NOTE: If we had mobile devices in the Jamf account, I would create a MobileDeviceProvider as well

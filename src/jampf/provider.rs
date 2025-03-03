@@ -10,7 +10,7 @@ use version_compare::{compare, Cmp};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct DevicesOutput {
-    computers: Vec<Computer>,
+    devices: Vec<Computer>,
 }
 
 fn is_os_updated(os_version: String, available_updates: Vec<String>) -> bool {
@@ -62,6 +62,7 @@ pub struct ComputerProvider {
 
 impl ComputerProvider {
     pub async fn fetch_computers(&self) -> Result<DevicesOutput, JamfClientError> {
+        // Get metadata for all computer devices
         let inventory = self
             .jamf_client
             .get_computer_inventory(vec![
@@ -71,13 +72,17 @@ impl ComputerProvider {
             ])
             .await
             .inspect_err(|e| error!("Failed to fetch computers with error: {}", e))?;
+
+        // Get available OS managed updates to determine OS status
         let os_versions = self
             .jamf_client
             .get_os_managed_updates()
             .await
             .inspect_err(|e| error!("Failed to get OS versions with error {}", e))?;
+
+        // Convert computer device metadata into DevicesOutput
         let computers_output = DevicesOutput {
-            computers: inventory
+            devices: inventory
                 .results
                 .into_iter()
                 .map(|i| {
@@ -130,7 +135,7 @@ mod test {
             .fetch_computers()
             .await
             .expect("Should succeed");
-        assert_eq!(computers, DevicesOutput { computers: vec![] });
+        assert_eq!(computers, DevicesOutput { devices: vec![] });
     }
 
     #[tokio::test]
@@ -161,7 +166,7 @@ mod test {
         assert_eq!(
             computers,
             DevicesOutput {
-                computers: vec![test_computer_output()]
+                devices: vec![test_computer_output()]
             }
         );
     }

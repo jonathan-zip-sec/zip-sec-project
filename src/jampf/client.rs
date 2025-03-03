@@ -14,6 +14,8 @@ static JAMF_CLIENT: OnceCell<Client> = OnceCell::const_new();
 static PAGE_SIZE: usize = 100;
 
 #[derive(PartialEq, Eq, Debug)]
+/// Sections for computer inventory API 
+/// note: This enum is not exhaustive
 pub(crate) enum ComputerInventorySection {
     General,
     Hardware,
