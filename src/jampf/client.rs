@@ -4,7 +4,7 @@ use thiserror::Error;
 use tokio::sync::OnceCell;
 use tracing::error;
 
-use crate::jampf::models::ComputerInventoryResponse;
+use crate::jampf::models::{AvailableUpdates, ComputerInventoryResponse};
 
 use super::models::JamfAuthReponse;
 static JAMF_CLIENT: OnceCell<Client> = OnceCell::const_new();
@@ -35,6 +35,8 @@ pub(crate) trait JamfClientTrait {
         &self,
         section: Vec<ComputerInventorySection>,
     ) -> Result<ComputerInventoryResponse, JamfClientError>;
+
+    async fn get_os_managed_updates(&self) -> Result<AvailableUpdates, JamfClientError>;
 }
 
 #[enum_dispatch(JamfClientTrait)]
@@ -130,6 +132,26 @@ impl JamfClientTrait for JamfClientImpl {
         }
         Ok(inventory_response)
     }
+
+    async fn get_os_managed_updates(&self) -> Result<AvailableUpdates, JamfClientError> {
+        let response = get_client()
+            .await
+            .get(format!(
+                "{}/api/v1/managed-software-updates/available-updates",
+                self.jamf_url
+            ))
+            .header("accept", "application/json")
+            .bearer_auth(self.bearer_token.clone())
+            .send()
+            .await
+            .inspect_err(|e| error!("Failed to current Mac OS versions: {}", e))?;
+        // println!("{}", response.text().await.unwrap());
+        // todo!()
+        Ok(response
+            .json::<AvailableUpdates>()
+            .await
+            .inspect_err(|e| error!("Failed to get available updates: {}", e))?)
+    }
 }
 
 #[cfg(test)]
@@ -153,7 +175,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_get_computers_success() {
+    async fn get_computers_success() {
         let provider = init().await;
 
         let inventory = provider
@@ -165,6 +187,14 @@ mod tests {
             .unwrap();
         assert_eq!(inventory.total_count, 4);
         assert_eq!(inventory.results.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn get_mac_os_updates() {
+        let provider = init().await;
+        let updates = provider.get_os_managed_updates().await.unwrap();
+        // This can obviously change, just a placeholder so I have some kind of test
+        assert_eq!(updates.available_updates.mac_os.len(), 14);
     }
 
     // TODO: If I had more time I would use http-relay to mock jamf server responses: https://crates.io/crates/http-relay

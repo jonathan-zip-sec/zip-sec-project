@@ -1,43 +1,45 @@
 use super::{
     client::{JamfClient, JamfClientError},
-    models::ComputerInventoryResponse,
+    models::JamfComputerDetailedMetadata,
 };
 use crate::jampf::client::ComputerInventorySection;
 use crate::jampf::client::JamfClientTrait;
 use serde::{Deserialize, Serialize};
 use tracing::error;
+use version_compare::{compare, Cmp};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct ComputersOutput {
     computers: Vec<Computer>,
 }
 
-impl From<ComputerInventoryResponse> for ComputersOutput {
-    fn from(value: ComputerInventoryResponse) -> Self {
-        let computers = value
-            .results
-            .into_iter()
-            .map(|c| {
-                let name = c.general.and_then(|g| Some(g.name));
-                let model = c.hardware.and_then(|h| Some(h.model));
-                let os = c
-                    .operating_system
-                    .as_ref()
-                    .and_then(|o| Some(o.name.clone()));
-                let os_version = c
-                    .operating_system
-                    .as_ref()
-                    .and_then(|o| Some(o.version.clone()));
-                Computer {
-                    name,
-                    model,
-                    os,
-                    os_version,
-                    device_id: c.id.clone(),
-                }
-            })
-            .collect();
-        Self { computers }
+fn is_os_updated(os_version: String, available_updates: Vec<String>) -> bool {
+    !available_updates
+        .iter()
+        .any(|update| compare(os_version.clone(), update).unwrap_or(Cmp::Lt) == Cmp::Lt)
+}
+
+fn convert_jamf_computer_details(
+    jamf_computer_details: JamfComputerDetailedMetadata,
+    mac_os_versions: Vec<String>,
+) -> Computer {
+    let name = jamf_computer_details.general.and_then(|g| Some(g.name));
+    let model = jamf_computer_details.hardware.and_then(|h| Some(h.model));
+    let os = jamf_computer_details
+        .operating_system
+        .as_ref()
+        .and_then(|o| Some(o.name.clone()));
+    let os_version = jamf_computer_details
+        .operating_system
+        .as_ref()
+        .and_then(|o| Some(o.version.clone()));
+    let os_is_updated = os_version.and_then(|v| Some(is_os_updated(v, mac_os_versions)));
+    Computer {
+        name,
+        model,
+        os,
+        os_is_updated,
+        device_id: jamf_computer_details.id.clone(),
     }
 }
 
@@ -47,7 +49,7 @@ pub struct Computer {
     name: Option<String>,
     model: Option<String>,
     os: Option<String>,
-    os_version: Option<String>,
+    os_is_updated: Option<bool>,
 }
 
 pub struct ComputerProvider {
@@ -65,7 +67,20 @@ impl ComputerProvider {
             ])
             .await
             .inspect_err(|e| error!("Failed to fetch computers with error: {}", e))?;
-        let computers_output = ComputersOutput::from(inventory);
+        let os_versions = self
+            .jamf_client
+            .get_os_managed_updates()
+            .await
+            .inspect_err(|e| error!("Failed to get OS versions with error {}", e))?;
+        let computers_output = ComputersOutput {
+            computers: inventory
+                .results
+                .into_iter()
+                .map(|i| {
+                    convert_jamf_computer_details(i, os_versions.available_updates.mac_os.clone())
+                })
+                .collect(),
+        };
         Ok(computers_output)
     }
 }
@@ -74,7 +89,10 @@ impl ComputerProvider {
 mod test {
     use crate::jampf::{
         client::{ComputerInventorySection, JamfClient, MockJamfClientTrait},
-        models::{ComputerInventoryResponse, GeneralMetadata, JamfComputerDetailedMetadata},
+        models::{
+            AvailableUpdates, AvailableUpdatesInner, ComputerInventoryResponse, GeneralMetadata,
+            JamfComputerDetailedMetadata, OperatingSystemMetadata,
+        },
         provider::{ComputerProvider, ComputersOutput},
     };
 
@@ -99,6 +117,9 @@ mod test {
                     results: vec![],
                 })
             });
+        client_mock
+            .expect_get_os_managed_updates()
+            .return_once(|| Ok(test_available_updates()));
         let jamf_client = JamfClient::Mock(client_mock);
         let computer_provider = ComputerProvider { jamf_client };
         let computers = computer_provider
@@ -124,6 +145,9 @@ mod test {
                 );
                 Ok(test_inventory_response())
             });
+        client_mock
+            .expect_get_os_managed_updates()
+            .return_once(|| Ok(test_available_updates()));
         let jamf_client = JamfClient::Mock(client_mock);
         let computer_provider = ComputerProvider { jamf_client };
         let computers = computer_provider
@@ -138,15 +162,15 @@ mod test {
         );
     }
 
-    // TODO: If I had more time, I'd write tests for more cases :)
+    // TODO: If I had more time, I'd write tests for more cases, mock errors etc... :)
 
     fn test_computer_output() -> Computer {
         Computer {
             device_id: Some("test_id".to_string()),
             name: Some("test_name".to_string()),
             model: None,
-            os: None,
-            os_version: None,
+            os: Some("MacOS".to_string()),
+            os_is_updated: Some(true),
         }
     }
 
@@ -158,13 +182,27 @@ mod test {
                 security: None,
                 software: None,
                 configuration_profiles: None,
-                operating_system: None,
+                operating_system: Some(OperatingSystemMetadata {
+                    name: "MacOS".to_string(),
+                    version: "14.0.0".to_string(),
+                    build: "whatever".to_string(),
+                    software_updates: None,
+                }),
                 general: Some(GeneralMetadata {
                     name: "test_name".to_string(),
                 }),
                 id: Some("test_id".to_string()),
                 udid: Some("udid_test".to_string()),
             }],
+        }
+    }
+
+    fn test_available_updates() -> AvailableUpdates {
+        AvailableUpdates {
+            available_updates: AvailableUpdatesInner {
+                mac_os: vec!["14.0.0".to_string()],
+                ios: vec![],
+            },
         }
     }
 }

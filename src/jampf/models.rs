@@ -95,3 +95,17 @@ pub(crate) struct ComputerInventoryResponse {
     pub(crate) total_count: usize,
     pub(crate) results: Vec<JamfComputerDetailedMetadata>,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct AvailableUpdates {
+    #[serde(rename = "availableUpdates")]
+    pub(crate) available_updates: AvailableUpdatesInner,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct AvailableUpdatesInner {
+    #[serde(rename = "macOS")]
+    pub(crate) mac_os: Vec<String>,
+    #[serde(rename = "iOS")]
+    pub(crate) ios: Vec<String>,
+}
