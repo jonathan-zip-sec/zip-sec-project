@@ -5,7 +5,7 @@ use http::StatusCode;
 
 use tracing::{error, info, instrument};
 
-use crate::jampf::{
+use crate::jamf::{
     client::{JamfClient, JamfClientImpl},
     provider::{ComputerProvider, DevicesOutput},
 };
@@ -36,6 +36,6 @@ pub async fn devices() -> Result<Json<DevicesOutput>, StatusCode> {
         error!("Something went wrong fetching computer inventory: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    let computers_output = DevicesOutput::from(inventory);
-    Ok(Json(computers_output))
+    let devices_output = DevicesOutput::from(inventory);
+    Ok(Json(devices_output))
 }

@@ -4,7 +4,7 @@ use thiserror::Error;
 use tokio::sync::OnceCell;
 use tracing::error;
 
-use crate::jampf::models::JamfComputerInventoryResponse;
+use crate::jamf::models::JamfComputerInventoryResponse;
 
 use super::models::{JamfAuthReponse, JamfAvailableUpdates};
 
@@ -170,7 +170,7 @@ impl JamfClientTrait for JamfClientImpl {
 
 #[cfg(test)]
 mod tests {
-    use crate::jampf::client::{ComputerInventorySection, JamfClient, JamfClientTrait};
+    use crate::jamf::client::{ComputerInventorySection, JamfClient, JamfClientTrait};
     use dotenv::dotenv;
     use std::env;
 

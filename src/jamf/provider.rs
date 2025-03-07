@@ -2,8 +2,8 @@ use super::{
     client::{JamfClient, JamfClientError},
     models::JamfComputer,
 };
-use crate::jampf::client::ComputerInventorySection;
-use crate::jampf::client::JamfClientTrait;
+use crate::jamf::client::ComputerInventorySection;
+use crate::jamf::client::JamfClientTrait;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use version_compare::{compare, Cmp};
@@ -96,7 +96,7 @@ impl ComputerProvider {
 
 #[cfg(test)]
 mod test {
-    use crate::jampf::{
+    use crate::jamf::{
         client::{ComputerInventorySection, JamfClient, MockJamfClientTrait},
         models::{
             AvailableUpdates, JamfAvailableUpdates, JamfComputer, JamfComputerGeneral,

@@ -3,7 +3,7 @@ use axum::{
     Router,
 };
 
-pub mod jampf;
+pub mod jamf;
 pub mod routes;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{info, Level};
